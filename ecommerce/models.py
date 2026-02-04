@@ -27,6 +27,15 @@ class Produto(models.Model):
     def __str__(self):
         return f"{self.nome} - ({self.get_tipo_display()})"
     
+class Sabor(models.Model):
+    tipo_choices = [('recheio_bolo', 'Recheio de Bolo'), ('recheio_cupcake', 'Recheio do Mini Cupcake'), ('recheio_caseirinho', 'Recheio do Caseirinho'), ('massa_bolo', 'Massa do Bolo'), ('massa_caseirinho', 'Massa do Caseirinho'), ('massa_cupcake', 'Massa do Mini Cupcake'), ('doce', 'Doces'), ('salgado', 'Salgados')]
+    nome = models.CharField(max_length=30)
+    tipo = models.CharField(max_length=50, choices=tipo_choices)
+    observacao = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"{self.nome} - ({self.get_tipo_display()})"
+    
 class VariacaoProduto(models.Model):
     produto = models.ForeignKey (Produto, on_delete=models.CASCADE, related_name='variacoes')
     nome = models.CharField(max_length=100)
@@ -88,17 +97,20 @@ class ItemPedido(models.Model):
     quantidade = models.PositiveIntegerField(default=1)
 
     # Personalizações
-    massa = models.CharField(max_length=50, blank=True)
-    recheio = models.CharField(max_length=100, blank=True)
+    massa = models.ForeignKey(Sabor, on_delete=models.SET_NULL, null=True, blank=True, related_name='itens_massa')
+    recheio = models.ForeignKey(Sabor, on_delete=models.SET_NULL, null=True, blank=True, related_name='itens_recheio')
     tema = models.CharField(max_length=100, blank=True)
     imagem_referencia = models.ImageField(upload_to='referencias/', blank=True, null=True)
 
     valor_unitario = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal('0.00'))
-    valor_total = models.DecimalField(max_digits=10, decimal_places=2)
+    valor_total = models.DecimalField(max_digits=10, decimal_places=2, blank=True)
 
     def save(self, *args, **kwargs):
         if self.variacao: 
             self.valor_unitario = self.variacao.preco
+        elif hasattr(self.produto, 'preco'):
+            self.valor_unitario = self.produto.preco
+
         self.valor_total = self.quantidade * self.valor_unitario
         super().save(*args, **kwargs)
         self.pedido.calcular_total()
