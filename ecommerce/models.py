@@ -4,6 +4,11 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 from datetime import date, timedelta
 from decimal import Decimal
+from .services.google_calendar import (
+    criar_evento_google,
+    atualizar_evento_google,
+    cancelar_evento_google,
+)
 
 class Cliente(models.Model):
     nome = models.CharField(max_length=100)
@@ -42,75 +47,248 @@ class VariacaoProduto(models.Model):
     descricao = models.TextField(blank=True)
     peso_kg = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
     preco = models.DecimalField(max_digits=8, decimal_places=2)
+    qtd_doces = models.PositiveBigIntegerField(default=0)
+    qtd_salgados = models.PositiveBigIntegerField(default=0)
     
     def __str__(self):
         return f'{self.produto.nome} - {self.nome} - {self.preco}'
 
 class Pedido(models.Model):
-    status_choise = [('rascunho', 'Rascunho'), ('finalizado', 'Finalizado'), ('cancelado', 'Cancelado')]
-    cliente = models.ForeignKey(Cliente, on_delete=models.PROTECT, null=True, blank=True)
-    data_entrega = models.DateField(null=True, blank=True)
-    observacoes = models.TextField(blank=True)
-    criando_em = models.DateTimeField(auto_now_add=True)
-    valor_total = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
-    evento_calendar_id = models.CharField(max_length=255, blank=True, null=True)
-    status = models.CharField(max_length=20, choices=status_choise, default='rascunho')
 
+    STATUS_CHOICES = [
+        ('rascunho', 'Rascunho'),
+        ('finalizado', 'Finalizado'),
+        ('cancelado', 'Cancelado'),
+    ]
 
-    LIMITE_POR_DIA = 7
+    cliente = models.ForeignKey(
+        'Cliente',
+        on_delete=models.PROTECT,
+        related_name='pedidos'
+    )
 
+    data_pedido = models.DateTimeField(default=timezone.now)
+    data_entrega = models.DateField()
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='rascunho'
+    )
+
+    total = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0
+    )
+
+    evento_calendar_id = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True
+    )
+
+    # -------------------------
+    # REGRAS DE NEGÓCIO
+    # -------------------------
     def clean(self):
-        if not self.data_entrega.weekday() in [6, 0]:
-            raise ValidationError ("Não realizamos agendamentos aos domingos e segundas.")
-        
-        data_minima = date.today() + timedelta(days=2)
+        # domingo (6) e segunda (0)
+        if self.data_entrega and self.data_entrega.weekday() in [6, 0]:
+            raise ValidationError(
+                {'data_entrega': 'Não é permitido agendamento para domingo ou segunda-feira.'}
+            )
 
-        if self.data_entrega < data_minima:
-            raise ValidationError ("Pedidos devem ser realizado com no mínino 02 dias de antecedencia.")
-            
-        total_no_dia = Pedido.objects.filter(data_entrega=self.data_entrega).exclude(pk=self.pk).count()
+        # mínimo 2 dias de antecedência
+        if self.data_entrega:
+            dias = (self.data_entrega - timezone.now().date()).days
+            if dias < 2:
+                raise ValidationError(
+                    {'data_entrega': 'Pedidos devem ser feitos com no mínimo 2 dias de antecedência.'}
+                )
 
-        if total_no_dia >= self.LIMITE_POR_DIA:
-            raise ValidationError ("Limite de pedidos para essa data foi atingida.")
-    
+    # -------------------------
+    # CÁLCULO DO TOTAL
+    # -------------------------
     def calcular_total(self):
-        total = Decimal("0.00")
+        total = sum(item.valor_total for item in self.itens.all())
+        Pedido.objects.filter(pk=self.pk).update(total=total)
 
-        for item in self.itens.all():
-            total += item.valor_total
-        
-        self.valor_total = total
-        self.save(update_fields=["valor_total"])
+    # -------------------------
+    # SAVE COM GOOGLE AGENDA
+    # -------------------------
+    def save(self, *args, **kwargs):
+        pedido_antigo = None
+
+        if self.pk:
+            pedido_antigo = Pedido.objects.get(pk=self.pk)
+
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+        # FINALIZADO → criar evento
+        if self.status == 'finalizado' and not self.evento_calendar_id:
+            evento_id = criar_evento_google(self)
+            Pedido.objects.filter(pk=self.pk).update(
+                evento_calendar_id=evento_id
+            )
+
+        # FINALIZADO → data alterada → atualizar evento
+        if (
+            pedido_antigo and
+            self.status == 'finalizado' and
+            self.evento_calendar_id and
+            pedido_antigo.data_entrega != self.data_entrega
+        ):
+            atualizar_evento_google(self.evento_calendar_id, self)
+
+        # CANCELADO → remover evento
+        if (
+            pedido_antigo and
+            pedido_antigo.status == 'finalizado' and
+            self.status == 'cancelado' and
+            self.evento_calendar_id
+        ):
+            cancelar_evento_google(self.evento_calendar_id)
+            Pedido.objects.filter(pk=self.pk).update(
+                evento_calendar_id=None
+            )
 
     def __str__(self):
-        return f"Pedido # {self.id}"
+        return f'Pedido #{self.pk} - {self.cliente}'
+
+from django.db import models
+from django.core.exceptions import ValidationError
+from decimal import Decimal
 
 
 class ItemPedido(models.Model):
+
     pedido = models.ForeignKey(
         Pedido,
         on_delete=models.CASCADE,
         related_name='itens'
     )
-    produto = models.ForeignKey(Produto, on_delete=models.PROTECT)
-    variacao = models.ForeignKey(VariacaoProduto, on_delete=models.PROTECT, null=True, blank=True)       
+
+    produto = models.ForeignKey(
+        'Produto',
+        on_delete=models.PROTECT
+    )
+
+    variacao = models.ForeignKey(
+        'VariacaoProduto',
+        on_delete=models.PROTECT,
+        blank=True,
+        null=True
+    )
+
     quantidade = models.PositiveIntegerField(default=1)
 
+    valor_unitario = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal('0.00')
+    )
+
+    valor_total = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        editable=False
+    )
+
+    observacao = models.TextField(blank=True)
+
     # Personalizações
-    massa = models.ForeignKey(Sabor, on_delete=models.SET_NULL, null=True, blank=True, related_name='itens_massa')
-    recheio = models.ForeignKey(Sabor, on_delete=models.SET_NULL, null=True, blank=True, related_name='itens_recheio')
+    massa = models.ForeignKey(
+        Sabor,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='itens_massa',
+        limit_choices_to={'tipo': 'massa'}
+    )
+
+    recheio = models.ForeignKey(
+        Sabor,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='itens_recheio',
+        limit_choices_to={'tipo': 'recheio'}
+    )
+
     tema = models.CharField(max_length=100, blank=True)
-    imagem_referencia = models.ImageField(upload_to='referencias/', blank=True, null=True)
 
-    valor_unitario = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal('0.00'))
-    valor_total = models.DecimalField(max_digits=10, decimal_places=2, blank=True)
+    imagem_referencia = models.ImageField(
+        upload_to='referencias/',
+        blank=True,
+        null=True
+    )
 
+    # -------------------------
+    # VALIDAÇÕES
+    # -------------------------
+    def clean(self):
+        super().clean()
+
+        if self.produto.tipo == 'KIT' and self.variacao:
+            total_doces = sum(
+                d.quantidade for d in self.doces_escolhidos.all()
+            )
+            total_salgados = sum(
+                s.quantidade for s in self.salgados_escolhidos.all()
+            )
+
+            if total_doces > self.variacao.qtd_doces:
+                raise ValidationError({
+                    'doces_escolhidos': 'Quantidade de doces excede o limite do kit.'
+                })
+
+            if total_salgados > self.variacao.qtd_salgados:
+                raise ValidationError({
+                    'salgados_escolhidos': 'Quantidade de salgados excede o limite do kit.'
+                })
+
+    # -------------------------
+    # SAVE
+    # -------------------------
     def save(self, *args, **kwargs):
-        if self.variacao: 
+
+        if self.variacao:
             self.valor_unitario = self.variacao.preco
-        elif hasattr(self.produto, 'preco'):
-            self.valor_unitario = self.produto.preco
 
         self.valor_total = self.quantidade * self.valor_unitario
+
+        self.full_clean()
         super().save(*args, **kwargs)
+
+        # atualiza total do pedido
         self.pedido.calcular_total()
+
+    def __str__(self):
+        return f'{self.produto} ({self.quantidade}x)'
+
+class ItemPedidoDoce(models.Model):
+    item_pedido = models.ForeignKey(
+        ItemPedido,
+        on_delete=models.CASCADE,
+        related_name='doces_escolhidos'
+    )
+    sabor = models.ForeignKey(
+        Sabor,
+        on_delete=models.PROTECT,
+        limit_choices_to={'tipo': 'doce'}
+    )
+    quantidade = models.PositiveIntegerField()
+
+class ItemPedidoSalgado(models.Model):
+    item_pedido = models.ForeignKey(
+        ItemPedido,
+        on_delete=models.CASCADE,
+        related_name='salgados_escolhidos'
+    )
+    sabor = models.ForeignKey(
+        Sabor,
+        on_delete=models.PROTECT,
+        limit_choices_to={'tipo': 'salgado'}
+    )
+    quantidade = models.PositiveIntegerField()
