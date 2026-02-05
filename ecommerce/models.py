@@ -47,8 +47,10 @@ class VariacaoProduto(models.Model):
     descricao = models.TextField(blank=True)
     peso_kg = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
     preco = models.DecimalField(max_digits=8, decimal_places=2)
-    qtd_doces = models.PositiveBigIntegerField(default=0)
-    qtd_salgados = models.PositiveBigIntegerField(default=0)
+    qtd_doces = models.PositiveSmallIntegerField(default=0)
+    qtd_salgados = models.PositiveSmallIntegerField(default=0)
+    max_opcoes_doces = models.PositiveSmallIntegerField(default=0)
+    max_opcoes_salgados = models.PositiveSmallIntegerField(default=0)
     
     def __str__(self):
         return f'{self.produto.nome} - {self.nome} - {self.preco}'
@@ -87,6 +89,8 @@ class Pedido(models.Model):
         blank=True,
         null=True
     )
+
+    observacoes = models.TextField(blank=True)
 
     # -------------------------
     # REGRAS DE NEGÓCIO
@@ -156,11 +160,6 @@ class Pedido(models.Model):
     def __str__(self):
         return f'Pedido #{self.pk} - {self.cliente}'
 
-from django.db import models
-from django.core.exceptions import ValidationError
-from decimal import Decimal
-
-
 class ItemPedido(models.Model):
 
     pedido = models.ForeignKey(
@@ -204,7 +203,7 @@ class ItemPedido(models.Model):
         null=True,
         blank=True,
         related_name='itens_massa',
-        limit_choices_to={'tipo': 'massa'}
+        limit_choices_to={'tipo__startswith': 'massa'}
     )
 
     recheio = models.ForeignKey(
@@ -213,7 +212,7 @@ class ItemPedido(models.Model):
         null=True,
         blank=True,
         related_name='itens_recheio',
-        limit_choices_to={'tipo': 'recheio'}
+        limit_choices_to={'tipo__startswith': 'recheio'}
     )
 
     tema = models.CharField(max_length=100, blank=True)
@@ -230,20 +229,31 @@ class ItemPedido(models.Model):
     def clean(self):
         super().clean()
 
-        if self.produto.tipo == 'KIT' and self.variacao:
-            total_doces = sum(
+        if self.produto.tipo != 'KIT' or not self.variacao:
+            return
+
+        opcoes_doces = self.doces_escolhidos.values('sabor').distinct().count()
+        opcoes_salgados = self.salgados_escolhidos.values('sabor').distinct().count()
+
+        if opcoes_doces > self.variacao.max_opcoes_doces:
+            raise ValidationError({'doces_escolhidos' : f'Esse kit permite {self.variacao.max_opcoes_doces} opções de doces.'})
+        
+        if opcoes_salgados > self.variacao.max_opcoes_salgados:
+            raise ValidationError({'salgados_escolhidos': f'Esse kit permite {self.variacao.max_opcoes_salgados} opções de salgados.'})
+
+        total_doces = sum(
                 d.quantidade for d in self.doces_escolhidos.all()
             )
-            total_salgados = sum(
+        total_salgados = sum(
                 s.quantidade for s in self.salgados_escolhidos.all()
             )
 
-            if total_doces > self.variacao.qtd_doces:
+        if total_doces > self.variacao.qtd_doces:
                 raise ValidationError({
                     'doces_escolhidos': 'Quantidade de doces excede o limite do kit.'
                 })
 
-            if total_salgados > self.variacao.qtd_salgados:
+        if total_salgados > self.variacao.qtd_salgados:
                 raise ValidationError({
                     'salgados_escolhidos': 'Quantidade de salgados excede o limite do kit.'
                 })
