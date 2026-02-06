@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<section class="pedido-box">
+
+    <h2>Fazer encomenda</h2>
+
+    <form method="post">
+        {% csrf_token %}
+
+        {{ form.as_p }}
+
+        <button type="submit" class="btn-principal">
+            Enviar pedido
+        </button>
+    </form>
+
+</section>
+{% endblock %}

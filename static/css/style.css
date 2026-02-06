@@ -192,3 +192,17 @@ textarea:focus {
     width: 100%;
     height: auto;
 }
+
+
+.pedido-box {
+    max-width: 420px;
+    margin: 40px auto;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 25px;
+    border-radius: 12px;
+}
+
+.pedido-box h2 {
+    text-align: center;
+    margin-bottom: 20px;
+}
