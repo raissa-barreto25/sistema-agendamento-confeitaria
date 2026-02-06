@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% load static %}
+
+
+{% block title %}Vitória’s Festas | Home{% endblock %}
+
+{% block content %}
+
+<section class="home">
+
+    <div class="logo">
+        <img src="{% static 'imagens/logo-vitorias-festas.png' %}" alt="Vitória’s Festas">
+    </div>
+    
+    <p class="subtitulo">
+        Bolos, doces e salgados feitos com carinho para celebrar seus melhores momentos 🎂
+    </p>
+
+    <div class="acoes">
+        <a href="{% url 'novo_pedido' %}" class="btn-principal">
+            Fazer encomenda
+        </a>
+    </div>
+</section>
+
+{% endblock %}

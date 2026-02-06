@@ -1,0 +1,194 @@
+/* ==========================
+   RESET TOTAL
+========================== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+}
+
+/* ==========================
+   VARIÁVEIS DE CORES
+========================== */
+:root {
+    --rosa-claro: #fde6ea;
+    --rosa-medio: #f6b7c9;
+    --rosa-escuro: #e58aa5;
+    --marrom: #6b3b2a;
+    --branco: #ffffff;
+}
+
+/* ==========================
+   BODY — FUNDO PRINCIPAL
+========================== */
+body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    color: var(--marrom);
+    min-height: 100vh;
+
+    background-color: var(--rosa-claro);
+
+    background-image:
+        url("/static/imagens/topo-doces.png"),
+        url("/static/imagens/base-doces.png"),
+        linear-gradient(90deg, rgba(255,255,255,0.35) 1px, transparent 1px),
+        linear-gradient(rgba(255,255,255,0.35) 1px, transparent 1px);
+
+    background-repeat:
+        no-repeat,
+        no-repeat,
+        repeat,
+        repeat;
+
+    background-position:
+        top center,
+        bottom center,
+        center,
+        center;
+
+    background-size:
+        100% auto,
+        100% auto,
+        40px 40px,
+        40px 40px;
+}
+
+/* ==========================
+   CONTEÚDO CENTRAL
+========================== */
+.conteudo {
+    width: 100%;
+    min-height: calc(100vh - 440px); /* topo + base */
+    padding: 40px 20px;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    background: transparent;
+}
+
+/* ==========================
+   CAIXA SOBREPOSTA (HOME / FORM)
+========================== */
+.caixa {
+    max-width: 520px;
+    width: 100%;
+    padding: 45px 40px;
+
+    background-color: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(2px);
+
+    border-radius: 28px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.15);
+}
+/* ==========================
+   HOME
+========================== */
+.home {
+    text-align: center;
+}
+
+.home h1 {
+    font-size: 42px;
+    margin-bottom: 20px;
+    color: var(--marrom);
+}
+
+.subtitulo {
+    font-size: 20px;
+    color: #8b5a3c;
+    margin-bottom: 40px;
+}
+
+/* ==========================
+   BOTÕES
+========================== */
+.btn-principal {
+    display: inline-block;
+    padding: 15px 36px;
+    background-color: var(--marrom);
+    color: var(--branco);
+    text-decoration: none;
+    font-size: 18px;
+    border-radius: 30px;
+    transition: all 0.3s ease;
+}
+
+.btn-principal:hover {
+    background-color: var(--rosa-escuro);
+    transform: translateY(-2px);
+}
+
+/* ==========================
+   FORMULÁRIOS
+========================== */
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+label {
+    font-weight: 600;
+}
+
+input,
+select,
+textarea {
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid #ccc;
+    font-size: 1rem;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--rosa-medio);
+    box-shadow: 0 0 0 2px rgba(246, 183, 201, 0.3);
+}
+
+/* ==========================
+   RESPONSIVO
+========================== */
+@media (max-width: 768px) {
+    .topo-doces,
+    .base-doces {
+        height: 160px;
+    }
+
+    .caixa {
+        padding: 25px;
+    }
+
+    .home h1 {
+        font-size: 32px;
+    }
+
+    .subtitulo {
+        font-size: 18px;
+    }
+}
+
+
+/* ==========================
+   LOGO
+========================== */
+.logo {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 25px;
+}
+
+.logo img {
+    max-width: 320px;   /* controla o tamanho */
+    width: 100%;
+    height: auto;
+}
